@@ -9,8 +9,8 @@ from pyrogram import Client
 
 
 
-class Account():
-    def __init__(self, name, phone_number, t_api_id, t_api_hash, b_api_key, b_secret_key, message_text, channel_id):
+class TradingBot():
+    def __init__(self, name, phone_number, t_api_id, t_api_hash, b_api_key, b_secret_key, message_text, telegram_bot, chat_id):
         self.name = name
         self.phone_number = phone_number
         self.t_api_id = t_api_id
@@ -19,12 +19,11 @@ class Account():
         self.b_secret_key = b_secret_key
         self.binance_acc = self.get_binance_client()
         self.message_text = message_text
-        self.channel_id = channel_id
         self.log = ""
+        
+        self.telegram_bot = telegram_bot
+        self.chat_id = chat_id
 
-        self.app = Client('my-session', phone_number = self.phone_number, api_id = self.t_api_id, api_hash = self.t_api_hash)
-        self.app.start()
-        self.app.send_message(chat_id = self.channel_id, text = "Start working")
 
     def __str__(self):
         return self.name + ", " + self.phone_number
@@ -156,11 +155,11 @@ class Account():
         return lot_size_min
 
     #function for placing an order by signals that we got
-    def place_an_order(self, pair, pair_min_price, pair_stoploss_price) -> dict:
+    def place_an_order(self, pair, buy_price, stoploss_price) -> dict:
         #calculate lot size, depends of signals price and symbol restriction
-        lot_size = self.calculate_lot_size(pair, str("{:.8f}".format(pair_stoploss_price)))
-        self.app.send_message(chat_id = self.channel_id, text = "I have calculated lot size for " + pair +
-                                                                ", by price - " + str("{:.8f}".format(pair_stoploss_price)) + ". Lot size is: " + str(lot_size))
+        lot_size = self.calculate_lot_size(pair, str("{:.8f}".format(stoploss_price)))
+        self.telegram_bot.send_message(self.chat_id, "I have calculated lot size for " + pair +
+                                                                ", by price - " + str("{:.8f}".format(buy_price)) + ". Lot size is: " + str(lot_size))
 
         # placing an order
         try:
@@ -170,24 +169,25 @@ class Account():
                                         type = "LIMIT",
                                         timeInForce = TIME_IN_FORCE_GTC,
                                         quantity = lot_size,
-                                        price = str("{:.8f}".format(pair_min_price))
+                                        price = str("{:.8f}".format(buy_price))
                                         )
 
-            self.app.send_message(chat_id = self.channel_id, text = "I have placed an order: " + str(order))
+            self.telegram_bot.send_message(self.chat_id, "I have placed an order: " + str(order))
             return order
 
         except Exception as err:
-            self.app.send_message(chat_id=self.channel_id, text="I have a problem with a order, there is a reason: " + str(err))
+            self.telegram_bot.send_message(self.chat_id, "I have a problem with an order, there is a reason: " + str(err))
 
     #function for checking an order, moving stoploss if price grew
-    def check_order(self, order: dict, check_time: int, pair_stoploss_price, pair_min_price, pair_max_price) -> None:
+    def check_order(self, order: dict, check_time: int, stoploss_price, buy_price, sell_price) -> None:
         order_stat = self.binance_acc.get_order(symbol = order["symbol"], orderId = order["orderId"])
         #order_stat = {'symbol': 'POEBTC', 'orderId': 28625410, 'orderListId': -1, 'clientOrderId': 'zua3ZVKgWUUI5OE8UscwPu', 'price': '0.00000012', 'origQty': '1251.00000000', 'executedQty': '1251.00000000', 'cummulativeQuoteQty': '0.00015012', 'status': 'FILLED', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'BUY', 'stopPrice': '0.00000000', 'icebergQty': '0.00000000', 'time': 1588682374773, 'updateTime': 1588682374773, 'isWorking': True, 'origQuoteOrderQty': '0.00000000'}
 
         # loop while order is living, or canceled, or filled, or stoploss is filled
         while True:
+            self.telegram_bot.send_message(self.chat_id, "Sleep for " + str(check_time/60) + " minutes")
             time.sleep(check_time)
-            self.app.send_message(chat_id=self.channel_id, text="Check a status of the order")
+            self.telegram_bot.send_message(self.chat_id, "Check a status of the order")
 
             # if order isn't filled yet
             if order_stat["status"] == 'NEW' and order_stat["type"] == 'LIMIT':
@@ -195,18 +195,17 @@ class Account():
 
                 # if an order yonger then 1 days continue
                 if time_dif.days < 1:
-                    self.app.send_message(chat_id=self.channel_id, text="Order is not fill and it younger than 1 day, continue order checking")
+                    self.telegram_bot.send_message(self.chat_id, "Order is not fill and it younger than 1 day, continue order checking")
                     continue
 
                 # else canceling an order
                 else:
-                    self.app.send_message(chat_id=self.channel_id, text="Order is not fill and older than 1 day, cancelling order")
+                    self.telegram_bot.send_message(self.chat_id, "Order is not fill and older than 1 day, cancelling order")
                     result = self.binance_acc.cancel_order(
                                                 symbol = order["symbol"],
                                                 orderId = order["orderId"]
                                                 )
-                    self.app.send_message(chat_id=self.channel_id,
-                                          text="I have canceled an order: " + str(result))
+                    self.telegram_bot.send_message(self.chat_id, "I have canceled an order: " + str(result))
                     break
 
             #else if order filled
@@ -215,42 +214,36 @@ class Account():
 
                 # order yonger then 2 days
                 if time_dif.days < 2:
-                    self.app.send_message(chat_id=self.channel_id,
-                                          text="Order filled and it younger than 2 days")
+                    self.telegram_bot.send_message(self.chat_id, "Order filled and it younger than 2 days")
 
                     OCO_order = self.get_OCO(order_stat)
 
                     if not OCO_order:
-                        self.app.send_message(chat_id=self.channel_id,
-                                              text="There is no OCO order, I'm going to make it")
+                        self.telegram_bot.send_message(self.chat_id, "There is no OCO order, I'm going to make it")
                         try:
                             OCO_order = self.binance_acc.create_oco_order(
                                                                     symbol = order["symbol"],
                                                                     side = SIDE_SELL,
                                                                     quantity = order_stat["executedQty"],
-                                                                    price = str("{:.8f}".format(pair_max_price)),
-                                                                    stopPrice = str("{:.8f}".format(pair_stoploss_price)),
-                                                                    stopLimitPrice = str("{:.8f}".format(pair_stoploss_price)),
+                                                                    price = str("{:.8f}".format(sell_price)),
+                                                                    stopPrice = str("{:.8f}".format(stoploss_price)),
+                                                                    stopLimitPrice = str("{:.8f}".format(stoploss_price)),
                                                                     stopLimitTimeInForce = TIME_IN_FORCE_GTC
                                                                     )
 
-                            self.app.send_message(chat_id=self.channel_id,
-                                                  text="I have made an OCO order, here it is: " + str(OCO_order))
+                            self.telegram_bot.send_message(self.chat_id, "I have made an OCO order, here it is: " + str(OCO_order))
                         except Exception as err:
-                            self.app.send_message(chat_id=self.channel_id,
-                                                  text="I have a problem with a order, there is a reason: " + str(err))
+                            self.telegram_bot.send_message(self.chat_id, "I have a problem with a order, there is a reason: " + str(err))
 
                     # else there is a stoploss checking status, if filled then break loop
                     elif OCO_order["status"] == "FILLED":
                         result = OCO_order
-                        self.app.send_message(chat_id=self.channel_id,
-                                              text="OCO order filled: " + str(result))
+                        self.telegram_bot.send_message(self.chat_id, "OCO order filled: " + str(result))
                         break
                     # else if stoploss canceled then break loop
                     elif OCO_order["status"] == "CANCELED":
                         result = OCO_order
-                        self.app.send_message(chat_id=self.channel_id,
-                                              text="OCO order filled: " + str(result))
+                        self.telegram_bot.send_message(self.chat_id, "OCO order filled: " + str(result))
                         break
                     else:
                         pass
