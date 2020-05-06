@@ -29,7 +29,7 @@ class Account():
     def __str__(self):
         return self.name + ", " + self.phone_number
 
-    def get_binance_client(self) -> "binance.client.Client":
+    def get_binance_client(self):
         return client.Client(self.b_api_key, self.b_secret_key)
 
     #checking for existing an opened stoploss order
