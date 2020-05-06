@@ -1,0 +1,20 @@
+{
+  "symbol":"POEBTC",
+  "orderId":28624543,
+  "orderListId":-1,
+  "clientOrderId":"fuGArz7LjGm9CwbO72a4Cb",
+  "price":"0.00000012",
+  "origQty":"834.00000000",
+  "executedQty":"834.00000000",
+  "cummulativeQuoteQty":"0.00010008",
+  "status":"FILLED",
+  "timeInForce":"GTC",
+  "type":"LIMIT",
+  "side":"BUY",
+  "stopPrice":"0.00000000",
+  "icebergQty":"0.00000000",
+  "time":1588593209811,
+  "updateTime":1588593209811,
+  "isWorking":true,
+  "origQuoteOrderQty":"0.00000000"
+}
